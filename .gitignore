@@ -38,3 +38,5 @@ docs/site/
 docs/olddocs/
 docs/mkdocs/site/
 scripts/archives/
+.claude/
+DISTRO/
