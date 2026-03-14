@@ -435,6 +435,62 @@ python3 goad.py -t check -l GOAD -p proxmox -m local
 
 For the full verification checklist with commands, see [Phase 6 in the Deployment Log](docs/deployment/GOAD-DEPLOYMENT-LOG.md#phase-6-post-install-verification).
 
+### Accessing the Lab (RDP)
+
+The GOAD VMs run on an isolated network (192.168.10.0/24). To RDP in from your workstation, use SSH port forwarding through the provisioning VM:
+
+```bash
+# Forward local port to a GOAD VM's RDP port via the provisioning VM:
+ssh -L 3390:192.168.10.10:3389 <PROVISIONING_VM_USER>@<PROVISIONING_VM_IP>
+```
+
+Then open your RDP client and connect to `localhost:3390`.
+
+**Forward multiple VMs at once** by stacking `-L` flags:
+
+```bash
+ssh -L 3390:192.168.10.10:3389 \
+    -L 3391:192.168.10.11:3389 \
+    -L 3392:192.168.10.12:3389 \
+    -L 3393:192.168.10.22:3389 \
+    -L 3394:192.168.10.23:3389 \
+    <PROVISIONING_VM_USER>@<PROVISIONING_VM_IP>
+```
+
+| Local Port | VM | Hostname | RDP as `localhost:` |
+|------------|-----|----------|---------------------|
+| 3390 | DC01 | kingslanding | `localhost:3390` |
+| 3391 | DC02 | winterfell | `localhost:3391` |
+| 3392 | DC03 | meereen | `localhost:3392` |
+| 3393 | SRV02 | castelblack | `localhost:3393` |
+| 3394 | SRV03 | braavos | `localhost:3394` |
+
+### Default Credentials
+
+**Local admin (all VMs):**
+
+| Username | Password | Notes |
+|----------|----------|-------|
+| `vagrant` | `vagrant` | Local administrator, not a domain account. Works even if AD is down. |
+
+**Domain Admin accounts:**
+
+| Domain | Username | Password |
+|--------|----------|----------|
+| sevenkingdoms.local | `SEVENKINGDOMS\cersei.lannister` | `il0vejaime` |
+| sevenkingdoms.local | `SEVENKINGDOMS\robert.baratheon` | `iamthekingoftheworld` |
+| north.sevenkingdoms.local | `NORTH\eddard.stark` | `FightP3aceAndHonor!` |
+| essos.local | `ESSOS\daenerys.targaryen` | `BurnThemAll!` |
+
+**Key service accounts:**
+
+| Domain | Username | Password | Purpose |
+|--------|----------|----------|---------|
+| north.sevenkingdoms.local | `NORTH\sql_svc` | `YouWillNotKerboroast1ngMeeeeee` | MSSQL service on srv02 |
+| essos.local | `ESSOS\sql_svc` | `YouWillNotKerboroast1ngMeeeeee` | MSSQL service on srv03 |
+
+> **Note:** These credentials are intentionally weak — this is a pentesting lab. Do not reuse them anywhere.
+
 ---
 
 ## Troubleshooting
