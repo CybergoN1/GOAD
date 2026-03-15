@@ -21,6 +21,8 @@ This document records every step taken to deploy the GOAD (Game of Active Direct
 - [Phase 6: Post-Install Verification](#phase-6-post-install-verification)
 - [Backups to NAS](#backups-to-nas)
 - [Changes from Plan](#changes-from-plan)
+- [Reliability Measures for Long-Running Installs](#reliability-measures-for-long-running-installs)
+- [Phase 7: Exchange Extension](#phase-7-exchange-extension)
 - [Troubleshooting Quick Reference](#troubleshooting-quick-reference)
 
 ---
@@ -1147,6 +1149,129 @@ Of the 26 deviations from the original plan, the most impactful categories were:
 | PVE config backup | NAS | `folder216/pve-backups/config/pve-config-20260313.tar.gz` |
 | HAOS backup | NAS | `folder216/pve-backups/dump/` (vzdump archive, VM 112) |
 | WebApp1 backup | NAS | `folder216/pve-backups/dump/` (vzdump archive, VM 103) |
+
+---
+
+## Reliability Measures for Long-Running Installs
+
+GOAD's Ansible provisioning includes several long-running tasks (IIS feature installation, MSSQL setup, Exchange Server install) that can take 10-45+ minutes per task. These are prone to silent failures due to WinRM timeouts and output buffering. The following measures ensure a smooth install.
+
+### Line-Buffered Output
+
+By default, piping Ansible output through `tee` causes buffering — you won't see output in real-time, and if the process dies you won't know until you check manually.
+
+**Fix:** Always prefix with `stdbuf -oL` to force line-buffered output:
+
+```bash
+python3 goad.py -t install ... 2>&1 | stdbuf -oL tee -a ~/.goad/deploy.log
+```
+
+### Idempotent Resume After Crash
+
+If Ansible dies mid-run (WinRM timeout, OOM, SSH disconnect), you can safely resume without re-running Terraform:
+
+```bash
+python3 goad.py -t install -l GOAD -p proxmox -m local -a true -i <instance-id> 2>&1 | stdbuf -oL tee -a ~/.goad/deploy.log
+```
+
+The `-a true` flag skips the Terraform provide step and runs only Ansible. Because Ansible tasks are idempotent, already-completed tasks will be skipped quickly and provisioning resumes from the point of failure.
+
+### Extension Checkpoint Files
+
+The Exchange extension uses checkpoint markers to avoid re-running completed stages:
+
+- **Prereq marker:** `C:\exchange\exchange_prereqs_complete.txt` — created after all prerequisites (.NET, Visual C++, UCMA, IIS features) are installed. If this file exists, the prereq block is skipped entirely on retry.
+- **Service check:** The role checks for the `MSExchangeFrontendTransport` Windows service at the start. If Exchange is already installed, all install tasks are skipped.
+
+This means you can safely re-run the extension install after a crash — it will pick up where it left off.
+
+### tmux for Session Persistence
+
+Always run deploys inside a tmux session on MrBot to survive SSH disconnects:
+
+```bash
+tmux new-session -d -s goad "cd ~/GOAD && source .venv/bin/activate && export TF_VAR_pm_password=password && python3 goad.py ... 2>&1 | stdbuf -oL tee -a ~/.goad/deploy.log; echo DEPLOY_DONE; exec bash"
+```
+
+Monitor: `tmux attach -t goad` (detach with `Ctrl+b d`)
+
+### Pre-Deploy Backups
+
+Before major changes (new extensions, storage migrations), back up all GOAD VMs to the NAS:
+
+```bash
+ssh root@192.168.3.213 "vzdump 117 118 119 120 121 --storage nas-backup --compress zstd --mode snapshot"
+```
+
+Snapshot-mode backups run without stopping VMs and take ~2 minutes each.
+
+---
+
+## Phase 7: Exchange Extension
+
+### 7.1 Pre-Flight Fixes
+
+The Exchange extension's Proxmox terraform template (`extensions/exchange/providers/proxmox/windows.tf`) had bugs that would have caused the install to fail:
+
+| Issue | Original Value | Fixed Value |
+|-------|---------------|-------------|
+| Clone template | `Ubuntu_2404_x64` (wrong OS!) | `WinServer2019_x64` |
+| Memory | `12000` | `8192` (Exchange 2019 minimum is 8 GB) |
+| Description | `{{ip_range}}.10` (wrong IP) | `{{ip_range}}.21` |
+
+### 7.2 Deploying the Extension
+
+The Exchange extension must be installed via the GOAD interactive CLI (not command-line flags):
+
+```bash
+# On MrBot, in tmux
+cd ~/GOAD && source .venv/bin/activate
+export TF_VAR_pm_password=password
+python3 goad.py
+
+# In the GOAD console:
+# (instance loads automatically if set as default)
+install_extension exchange
+# Approve Terraform with "yes" when prompted
+```
+
+This creates VM 122 (SRV01 / the-eyrie) on `192.168.10.21` and runs the Exchange Ansible playbook.
+
+### 7.3 What the Extension Deploys
+
+| Step | Description | Duration |
+|------|-------------|----------|
+| Terraform | Clone SRV01 from template 107, 4 cores, 8 GB RAM | ~1 min |
+| AD data update | Add Arryn users/groups to sevenkingdoms.local (DC01) | ~2 min |
+| Server setup | Common config, keyboard, hostname, domain join | ~5 min |
+| ISO download | Exchange 2019 CU9 ISO (~6 GB) downloaded to MrBot | ~5 min |
+| ISO copy | Copy ISO from MrBot to SRV01 via WinRM | ~5 min |
+| Prerequisites | IIS features, .NET 4.8, Visual C++ 2013, UCMA, URL Rewrite | ~10 min |
+| Schema prep | `Setup.exe /PrepareSchema` — modifies AD schema | ~5 min |
+| AD prep | `Setup.exe /PrepareAD` — prepares AD organization | ~3 min |
+| Exchange install | `Setup.exe /Mode:Install /Role:Mailbox` | ~20-45 min |
+| Mailbox creation | Create mailboxes for all domain users | ~5 min |
+| DNS config | Configure internal DNS adapter | ~1 min |
+| Mail bot | Deploy mail reader bot with scheduled task | ~1 min |
+
+### 7.4 New Users Added
+
+| Username | Password | Domain | Group |
+|----------|----------|--------|-------|
+| `lysa.arryn` | `rob1nIsMyHeart` | sevenkingdoms.local | Arryn |
+| `robin.arryn` | `mommy` | sevenkingdoms.local | Arryn |
+
+### 7.5 Accessing Exchange
+
+After deployment, Exchange OWA is available at:
+
+```
+https://192.168.10.21/owa
+```
+
+Access via SSH tunnel: `ssh -L 8443:192.168.10.21:443 mrbot` then browse to `https://localhost:8443/owa`
+
+RDP to SRV01: `ssh -L 3395:192.168.10.21:3389 mrbot` then RDP to `localhost:3395`
 
 ---
 

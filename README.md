@@ -31,6 +31,9 @@ The GOAD Full lab deploys **5 Windows VMs** across **2 AD forests** and **3 doma
 | DC03 | meereen | essos.local | Server 2016 | External forest DC + ADCS |
 | SRV02 | castelblack | north.sevenkingdoms.local | Server 2019 | MSSQL + IIS + SSMS |
 | SRV03 | braavos | essos.local | Server 2016 | MSSQL + ADCS |
+| SRV01* | the-eyrie | sevenkingdoms.local | Server 2019 | Exchange 2019 (extension) |
+
+> \* SRV01 is added by the Exchange extension — see [Extensions](#extensions) below.
 
 **Attack surfaces included:** Kerberoasting, AS-REP Roasting, ADCS ESC1-ESC13, MSSQL linked servers with impersonation, unconstrained delegation, LAPS, ACL abuse paths, cross-forest trust attacks, GPO abuse, and more.
 
@@ -454,6 +457,7 @@ ssh -L 3390:192.168.10.10:3389 \
     -L 3392:192.168.10.12:3389 \
     -L 3393:192.168.10.22:3389 \
     -L 3394:192.168.10.23:3389 \
+    -L 3395:192.168.10.21:3389 \
     <PROVISIONING_VM_USER>@<PROVISIONING_VM_IP>
 ```
 
@@ -464,6 +468,7 @@ ssh -L 3390:192.168.10.10:3389 \
 | 3392 | DC03 | meereen | `localhost:3392` |
 | 3393 | SRV02 | castelblack | `localhost:3393` |
 | 3394 | SRV03 | braavos | `localhost:3394` |
+| 3395 | SRV01 | the-eyrie (Exchange) | `localhost:3395` |
 
 ### Default Credentials
 
@@ -546,6 +551,64 @@ This fork supports the same lab variants as upstream GOAD. This guide covers **G
 <div align="center">
 <img alt="DRACARYS" width="600" src="./docs/img/dracarys_logo.png">
 </div>
+
+---
+
+## Extensions
+
+GOAD supports optional extensions that add VMs and services to the base lab.
+
+### Exchange Server
+
+Adds **SRV01 (the-eyrie)** — Exchange Server 2019 CU9 on `sevenkingdoms.local`.
+
+**What it deploys:** Exchange Mailbox role, mailboxes for all domain users, DNS config, automated mail reader bot.
+
+**New accounts:**
+
+| Username | Password | Domain |
+|----------|----------|--------|
+| `SEVENKINGDOMS\lysa.arryn` | `rob1nIsMyHeart` | sevenkingdoms.local |
+| `SEVENKINGDOMS\robin.arryn` | `mommy` | sevenkingdoms.local |
+
+**To install** (after base GOAD is deployed):
+
+```bash
+# On provisioning VM, in the GOAD console:
+cd ~/GOAD && source .venv/bin/activate
+export TF_VAR_pm_password='<YOUR_API_PASSWORD>'
+python3 goad.py
+
+# In the console (instance loads automatically):
+install_extension exchange
+# Approve Terraform with "yes" when prompted
+```
+
+**Access Exchange OWA** via SSH tunnel:
+
+```bash
+ssh -L 8443:192.168.10.21:443 <PROVISIONING_VM_USER>@<PROVISIONING_VM_IP>
+# Then browse to https://localhost:8443/owa
+```
+
+**RDP to SRV01:**
+
+```bash
+ssh -L 3395:192.168.10.21:3389 <PROVISIONING_VM_USER>@<PROVISIONING_VM_IP>
+# Then RDP to localhost:3395
+```
+
+> **Resource requirements:** 4 cores, 8 GB RAM minimum (12 GB recommended for runtime). ~40 GB disk. Allow 30-45 minutes for deployment.
+
+### Other Available Extensions
+
+| Extension | What it adds | Install command |
+|-----------|-------------|-----------------|
+| `elk` | Elasticsearch + Kibana + Logstash (SIEM) | `install_extension elk` |
+| `wazuh` | Wazuh EDR agent | `install_extension wazuh` |
+| `ws01` | Hardened Windows 10 workstation | `install_extension ws01` |
+| `lx01` | Linux VM | `install_extension lx01` |
+| `guacamole` | Apache Guacamole (web-based remote access) | `install_extension guacamole` |
 
 ---
 
