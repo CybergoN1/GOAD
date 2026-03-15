@@ -472,27 +472,18 @@ ssh -L 3390:192.168.10.10:3389 \
 
 ### Default Credentials
 
-**Local admin (all VMs):**
+For the full credential reference with all 90+ accounts, groups, roles, and services, see [CREDENTIALS.md](CREDENTIALS.md).
 
-| Username | Password | Notes |
-|----------|----------|-------|
-| `vagrant` | `vagrant` | Local administrator, not a domain account. Works even if AD is down. |
+**Quick reference — admin accounts:**
 
-**Domain Admin accounts:**
-
-| Domain | Username | Password |
-|--------|----------|----------|
-| sevenkingdoms.local | `SEVENKINGDOMS\cersei.lannister` | `il0vejaime` |
-| sevenkingdoms.local | `SEVENKINGDOMS\robert.baratheon` | `iamthekingoftheworld` |
-| north.sevenkingdoms.local | `NORTH\eddard.stark` | `FightP3aceAndHonor!` |
-| essos.local | `ESSOS\daenerys.targaryen` | `BurnThemAll!` |
-
-**Key service accounts:**
-
-| Domain | Username | Password | Purpose |
-|--------|----------|----------|---------|
-| north.sevenkingdoms.local | `NORTH\sql_svc` | `YouWillNotKerboroast1ngMeeeeee` | MSSQL service on srv02 |
-| essos.local | `ESSOS\sql_svc` | `YouWillNotKerboroast1ngMeeeeee` | MSSQL service on srv03 |
+| Role | Account | Password |
+|------|---------|----------|
+| Local Admin (all VMs) | `vagrant` | `vagrant` |
+| Built-in Administrator | `SEVENKINGDOMS\Administrator` | `8dCT-DJjgScp` |
+| sevenkingdoms.local Domain Admin | `SEVENKINGDOMS\cersei.lannister` | `il0vejaime` |
+| north.sevenkingdoms.local Domain Admin | `NORTH\eddard.stark` | `FightP3aceAndHonor!` |
+| essos.local Domain Admin | `ESSOS\daenerys.targaryen` | `BurnThemAll!` |
+| Exchange Admin | `SEVENKINGDOMS\lysa.arryn` | `rob1nIsMyHeart` |
 
 > **Note:** These credentials are intentionally weak — this is a pentesting lab. Do not reuse them anywhere.
 
@@ -599,6 +590,18 @@ ssh -L 3395:192.168.10.21:3389 <PROVISIONING_VM_USER>@<PROVISIONING_VM_IP>
 ```
 
 > **Resource requirements:** 4 cores, 8 GB RAM minimum (12 GB recommended for runtime). ~40 GB disk. Allow 30-45 minutes for deployment.
+
+### User Expansion Pack
+
+The base GOAD lab has ~30 users. The expansion scripts in [ad/GOAD/scripts/expansion/](ad/GOAD/scripts/expansion/) add **60 more users** across all 3 domains, filling the empty OUs with GoT characters and adding:
+
+- 6 file shares with realistic loot documents (finance data, credentials, dock codes)
+- 8 MSSQL logins with impersonation chains and an over-privileged sysadmin
+- 6 BEC attack scenarios (mail forwarding, inbox rules, hidden delegation, external exfil)
+- 8 additional Kerberoastable accounts and 8 AS-REP Roastable accounts
+- Seed emails in mailboxes for forensic investigation practice
+
+See the [expansion README](ad/GOAD/scripts/expansion/README.md) for full details and run instructions.
 
 ### Other Available Extensions
 
